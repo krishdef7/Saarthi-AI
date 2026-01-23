@@ -13,9 +13,10 @@ logger = logging.getLogger("mas_scholar_api.data")
 
 # Paths to try for scholarship data
 DATA_PATHS = [
+    # Migrated location in backend/data/
+    Path(__file__).parent.parent / "data" / "scholarships.json",
+    # Legacy paths (kept just in case, though they are likely deleted)
     Path(__file__).parent.parent.parent / "shared" / "data" / "scholarships_complete.json",
-    Path(__file__).parent.parent.parent.parent / "data" / "scholarships_complete.json",
-    Path(__file__).parent.parent.parent.parent / "data" / "scholarships_database.json",
 ]
 
 def load_scholarships_data() -> List[Dict[str, Any]]:
