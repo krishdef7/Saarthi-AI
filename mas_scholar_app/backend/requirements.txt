@@ -1,0 +1,9 @@
+fastapi>=0.100.0
+uvicorn[standard]
+pydantic>=2.0.0
+python-multipart
+websockets
+
+# Vector search (optional - graceful fallback if unavailable)
+qdrant-client>=1.7.0
+sentence-transformers>=2.2.0

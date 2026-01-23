@@ -1,0 +1,79 @@
+# MAS-Scholar Docker Compose
+# ==========================
+# One-click deployment for judges
+#
+# Usage:
+#   docker-compose up -d
+#   streamlit run app/streamlit_app.py
+#
+# Note: Ollama must be run separately on the host machine
+#       (GPU passthrough to Docker is complex on Windows)
+
+version: '3.8'
+
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mas-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/collections"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  qdrant_storage:
+
+# ============================================
+# IMPORTANT: Ollama Setup (Run on Host)
+# ============================================
+#
+# Ollama requires GPU access and is best run directly on the host:
+#
+# 1. Install Ollama: https://ollama.com/download
+#
+# 2. Start Ollama server:
+#    ollama serve
+#
+# 3. Pull required models:
+#    ollama pull llama3.1:8b-instruct-q4_K_M
+#    ollama pull qwen2.5:7b-instruct-q4_K_M
+#    ollama pull mistral:7b-instruct-q4_K_M
+#
+# ============================================
+# Quick Start Commands
+# ============================================
+#
+# 1. Start Qdrant:
+#    docker-compose up -d
+#
+# 2. Start Ollama (separate terminal):
+#    ollama serve
+#
+# 3. Activate Python environment:
+#    .\venv\Scripts\activate  (Windows)
+#    source venv/bin/activate  (Linux/Mac)
+#
+# 4. Run data generation (first time only):
+#    python -m src.scrapers.scraper_main
+#
+# 5. Setup Qdrant collections (first time only):
+#    python -m src.qdrant_setup
+#
+# 6. Run Streamlit app:
+#    streamlit run app/streamlit_app.py
+#
+# 7. Run tests:
+#    python -m src.agents.test_agents --llm --reranker --full
+#
+# 8. Run benchmarks:
+#    python -m src.benchmarks.qdrant_bench
