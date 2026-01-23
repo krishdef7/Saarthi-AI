@@ -94,6 +94,7 @@ Saarthi AI (Sanskrit: "Guide/Charioteer") transforms scholarship discovery throu
        ↓
 ┌─────────────────────┐
 │  React Frontend     │  ← Observability UI (WebSocket streaming)
+│  (Next.js)          │
 └──────────┬──────────┘
            │
            ↓
@@ -182,28 +183,46 @@ user_interactions (per-user history)
 ### 1. Start Qdrant
 ```bash
 docker run -d -p 6333:6333 -v $(pwd)/qdrant_storage:/qdrant/storage qdrant/qdrant
+
+# OR use docker-compose
+docker-compose up -d
 ```
 
 ### 2. Backend Setup
 ```bash
-cd backend
+cd mas_scholar_app/backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 
+# Set up environment variables
+cp ../../.env.example .env
+# Edit .env with your API keys (Gemini, etc.)
+
 # Seed database (loads 185 verified scholarships)
-python scripts/seed_data.py
+python -m scripts.seed_data
 # Expected output: ✓ Loaded 185 scholarships into Qdrant
 
-# Start API
-uvicorn main:app --port 8000 --reload
+# Start API server
+uvicorn main:app --reload --port 8000
 ```
 
 ### 3. Frontend Setup
 ```bash
-cd frontend
+cd mas_scholar_app/frontend
+
+# Install dependencies
 npm ci
 
+# Set environment variable
+export NEXT_PUBLIC_API_URL=http://localhost:8000
+
 # Start development server
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+npm run dev
 
 # Open http://localhost:3000
 ```
@@ -212,19 +231,24 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 
 **Health Checks**:
 ```bash
-# API
+# API Health
 curl http://localhost:8000/health
 # Expected: {"status": "healthy", "qdrant": "connected", "collections": 2}
 
-# Qdrant
+# Qdrant Health
 curl http://localhost:6333/collections
 # Expected: {"result": {"collections": [...]}}
+
+# Frontend
+curl http://localhost:3000
+# Expected: HTML response
 ```
 
 **Try Sample Queries**:
 - `engineering scholarship for SC category`
 - `गरीब छात्रों के लिए पैसा` (Hindi: scholarship for poor students)
 - `PMSS-2024` (exact scheme ID)
+- Upload a scholarship poster image for OCR
 
 ---
 
@@ -255,7 +279,7 @@ curl http://localhost:6333/collections
 
 > **What LLMs Can/Cannot Do in Saarthi AI:**
 >
-> ✅ **LLMs are used for**:
+> ✅ **LLMs (Gemini) are used for**:
 > - Poster/image extraction (optional multimodal input)
 > - Optional web-agent result summaries
 >
@@ -272,6 +296,8 @@ curl http://localhost:6333/collections
 ## 📊 Dataset & Provenance
 
 **Total**: 185 manually verified scholarships
+
+**Location**: `mas_scholar_app/backend/data/scholarships.json`
 
 **Sources**:
 - National Scholarship Portal (scholarships.gov.in)
@@ -362,37 +388,63 @@ We show them, but with context—never hide information.
 ## 📁 Repository Structure
 
 ```
-mas-scholar/
-├── README.md                    ← You are here
-├── Saarthi_AI_Final_Submission.pdf   ← Technical report (22 pages)
+saarthi-ai/
+├── README.md                              ← You are here
+├── Saarthi_AI_Final_Submission.pdf       ← Technical report (22 pages)
+├── docker-compose.yml                     ← One-command Docker setup
+├── .env.example                           ← Environment variables template
 │
-├── backend/                     ← FastAPI server
-│   ├── main.py
-│   ├── services/
-│   │   ├── search_service.py    ← Hybrid RRF
-│   │   ├── memory_service.py    ← Vector memory
-│   │   ├── eligibility_service.py ← Deterministic logic
-│   │   └── agent_service.py     ← Fallback web search
-│   ├── models/
-│   └── requirements.txt
+├── mas_scholar_app/
+│   ├── backend/                           ← FastAPI server
+│   │   ├── main.py                        ← API entry point
+│   │   ├── requirements.txt               ← Python dependencies
+│   │   │
+│   │   ├── data/                          ← Datasets
+│   │   │   ├── scholarships.json          ← 185 verified scholarships
+│   │   │   ├── qdrant_payloads.json       ← Qdrant seed data
+│   │   │   └── test_profiles.json         ← Test user profiles
+│   │   │
+│   │   ├── models/                        ← Pydantic schemas
+│   │   │   ├── enums.py                   ← Enumerations
+│   │   │   └── schemas.py                 ← Request/response models
+│   │   │
+│   │   ├── routers/                       ← API endpoints
+│   │   │   ├── search.py                  ← Search API
+│   │   │   ├── scholarships.py            ← Scholarship CRUD
+│   │   │   ├── eligibility.py             ← Eligibility checks
+│   │   │   └── scan.py                    ← OCR/document processing
+│   │   │
+│   │   ├── services/                      ← Core business logic
+│   │   │   ├── hybrid_search.py           ← BM25 + Vector + RRF
+│   │   │   ├── user_memory.py             ← Vector memory system
+│   │   │   ├── eligibility.py             ← Deterministic eligibility
+│   │   │   ├── safety.py                  ← Trust scoring
+│   │   │   ├── web_search.py              ← Fallback agent
+│   │   │   ├── gemini_service.py          ← LLM integration
+│   │   │   ├── document_processor.py      ← OCR processing
+│   │   │   ├── data_loader.py             ← Data utilities
+│   │   │   └── websocket.py               ← Real-time updates
+│   │   │
+│   │   └── scripts/                       ← Utilities
+│   │       ├── seed_data.py               ← Load data into Qdrant
+│   │       └── config.py                  ← Configuration
+│   │
+│   └── frontend/                          ← React + Next.js UI
+│       ├── src/                           ← Source code
+│       │   ├── components/                ← React components
+│       │   └── pages/                     ← Next.js pages
+│       ├── public/                        ← Static assets
+│       ├── package.json                   ← Node dependencies
+│       └── next.config.ts                 ← Next.js configuration
 │
-├── frontend/                    ← React UI
-│   ├── src/
-│   │   ├── components/          ← SearchBar, ResultCard, etc.
-│   │   └── pages/               ← Search, Benchmarks, Memory
-│   └── package.json
+├── shared/
+│   └── data/
+│       └── scholarships_complete.json     ← Extended dataset
 │
-├── scripts/
-│   ├── seed_data.py             ← Load scholarships into Qdrant
-│   └── benchmark_qdrant.py      ← Performance testing
-│
-├── data/
-│   └── scholarships.json        ← 185 verified entries
-│
-└── tests/                       ← Unit + integration tests
-    ├── test_search.py
-    ├── test_memory.py
-    └── test_eligibility.py
+└── media/                                 ← Documentation images
+    ├── architecture_proof.png
+    ├── landing_hero.png
+    └── search_radar.png
 ```
 
 ---
@@ -403,20 +455,32 @@ mas-scholar/
 
 ```bash
 # Backend tests
-cd backend
-pytest tests/ -v
-# Expected: 47 passed in 2.31s
+cd mas_scholar_app/backend
+pytest test_endpoints.py -v
+# Expected: Tests pass
 
 # Frontend tests
-cd frontend
+cd mas_scholar_app/frontend
 npm test
+```
+
+### Manual Testing
+
+```bash
+# Test search endpoint
+cd mas_scholar_app/backend
+python test_endpoints.py
+
+# Expected: Sample queries return results with eligibility checks
 ```
 
 ### Run Benchmarks
 
 ```bash
-cd backend
-python scripts/benchmark_qdrant.py --output results/
+cd mas_scholar_app/backend
+
+# Run performance benchmarks (if implemented)
+python -m scripts.benchmark_qdrant --output results/
 
 # Generates:
 # - results/scale_experiment.csv
@@ -438,14 +502,33 @@ python scripts/benchmark_qdrant.py --output results/
 
 ## 🔒 Security & Privacy
 
-**Data Handling Commitments**:
+### Environment Variables
+
+Create `.env` file in project root (use `.env.example` as template):
+
+```bash
+# Qdrant Configuration
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=  # Optional for local development
+
+# Gemini API (for OCR)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Application Settings
+ENVIRONMENT=development
+LOG_LEVEL=INFO
+```
+
+### Data Handling Commitments
+
 - ✅ No document storage (images processed, then discarded)
 - ✅ No Aadhaar collection
 - ✅ No data monetization
 - ✅ Opt-in memory (can be disabled)
 - ✅ Right-to-delete endpoint (planned)
 
-**Privacy Controls**:
+### Privacy Controls
+
 - User can disable memory tracking
 - User can delete interaction history
 - User can export their data
@@ -510,6 +593,42 @@ This is a competition submission. After the hackathon, we plan to open-source wi
 
 ---
 
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Issue**: `ModuleNotFoundError` in backend
+```bash
+# Solution: Ensure virtual environment is activated
+cd mas_scholar_app/backend
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Issue**: Frontend can't connect to backend
+```bash
+# Solution: Check environment variable
+export NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
+```
+
+**Issue**: Qdrant connection failed
+```bash
+# Solution: Ensure Qdrant is running
+docker ps | grep qdrant
+# If not running:
+docker run -d -p 6333:6333 qdrant/qdrant
+```
+
+**Issue**: No data in Qdrant
+```bash
+# Solution: Seed the database
+cd mas_scholar_app/backend
+python -m scripts.seed_data
+```
+
+---
+
 ## 📜 License
 
 MIT License - See [LICENSE](LICENSE) file
@@ -522,8 +641,7 @@ MIT License - See [LICENSE](LICENSE) file
 
 - **Qdrant**: For the excellent vector database and hackathon sponsorship
 - **National Scholarship Portal**: For publicly accessible scholarship data
-- **IIT Bombay**: For organizing Convolve 4.0
-- **Open Source Community**: sentence-transformers, FastAPI, React, and all dependencies
+- **Open Source Community**: sentence-transformers, FastAPI, React, Next.js, and all dependencies
 
 ---
 
