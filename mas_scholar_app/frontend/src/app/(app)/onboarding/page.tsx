@@ -1,11 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Brain, ChevronRight, User, MapPin, IndianRupee, GraduationCap, Users, Upload, FileText, Loader2 } from "lucide-react";
+import { Brain, ChevronRight, User, MapPin, IndianRupee, GraduationCap, Users, Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// Validation helpers
+interface ValidationError {
+    field: string;
+    message: string;
+}
+
+function validateStep1(data: { name: string; category: string }): ValidationError[] {
+    const errors: ValidationError[] = [];
+    if (!data.name.trim()) {
+        errors.push({ field: "name", message: "Name is required" });
+    } else if (data.name.trim().length < 2) {
+        errors.push({ field: "name", message: "Name must be at least 2 characters" });
+    } else if (data.name.trim().length > 100) {
+        errors.push({ field: "name", message: "Name must be less than 100 characters" });
+    }
+    return errors;
+}
+
+function validateStep3(data: { income: string }): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const incomeNum = parseInt(data.income);
+    if (data.income && (isNaN(incomeNum) || incomeNum < 0)) {
+        errors.push({ field: "income", message: "Income must be a valid positive number" });
+    } else if (incomeNum > 100000000) {
+        errors.push({ field: "income", message: "Income seems too high, please verify" });
+    }
+    return errors;
+}
 
 export default function Onboarding() {
     const router = useRouter();
@@ -13,6 +42,8 @@ export default function Onboarding() {
     const [step, setStep] = useState(1);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState("");
+    const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+    const [touched, setTouched] = useState<Record<string, boolean>>({});
 
     const [formData, setFormData] = useState({
         name: "",
@@ -22,6 +53,22 @@ export default function Onboarding() {
         education: "undergraduate",
         gender: "Any"
     });
+
+    // Compute validation errors for current step
+    const currentErrors = useMemo(() => {
+        if (step === 1) return validateStep1(formData);
+        if (step === 3) return validateStep3(formData);
+        return [];
+    }, [step, formData]);
+
+    const getFieldError = (field: string) => {
+        if (!touched[field]) return null;
+        return currentErrors.find(e => e.field === field)?.message || null;
+    };
+
+    const handleFieldBlur = (field: string) => {
+        setTouched(prev => ({ ...prev, [field]: true }));
+    };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -66,6 +113,22 @@ export default function Onboarding() {
     ];
 
     const handleNext = () => {
+        // Validate current step before proceeding
+        let errors: ValidationError[] = [];
+        if (step === 1) {
+            errors = validateStep1(formData);
+            setTouched({ name: true, category: true });
+        } else if (step === 3) {
+            errors = validateStep3(formData);
+            setTouched(prev => ({ ...prev, income: true }));
+        }
+
+        if (errors.length > 0) {
+            setValidationErrors(errors);
+            return;
+        }
+
+        setValidationErrors([]);
         if (step < 3) setStep(step + 1);
         else handleSubmit();
     };
@@ -127,9 +190,19 @@ export default function Onboarding() {
                                 type="text"
                                 value={formData.name}
                                 onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full bg-slate-800/50 border border-slate-700 rounded-lg p-3 text-white focus:border-cyan-500 outline-none"
+                                onBlur={() => handleFieldBlur("name")}
+                                className={`w-full bg-slate-800/50 border rounded-lg p-3 text-white focus:border-cyan-500 outline-none transition-colors ${
+                                    getFieldError("name") ? "border-red-500" : "border-slate-700"
+                                }`}
                                 placeholder="Enter your name"
+                                aria-invalid={!!getFieldError("name")}
+                                aria-describedby={getFieldError("name") ? "name-error" : undefined}
                             />
+                            {getFieldError("name") && (
+                                <p id="name-error" className="text-red-400 text-xs flex items-center gap-1 mt-1">
+                                    <AlertCircle className="w-3 h-3" /> {getFieldError("name")}
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm text-gray-400 flex items-center gap-2"><Users className="w-4 h-4" /> Category</label>
@@ -182,9 +255,19 @@ export default function Onboarding() {
                                 type="number"
                                 value={formData.income}
                                 onChange={e => setFormData({ ...formData, income: e.target.value })}
-                                className="w-full bg-slate-800/50 border border-slate-700 rounded-lg p-3 text-white focus:border-cyan-500 outline-none"
+                                onBlur={() => handleFieldBlur("income")}
+                                className={`w-full bg-slate-800/50 border rounded-lg p-3 text-white focus:border-cyan-500 outline-none transition-colors ${
+                                    getFieldError("income") ? "border-red-500" : "border-slate-700"
+                                }`}
                                 placeholder="e.g. 500000"
+                                aria-invalid={!!getFieldError("income")}
+                                aria-describedby={getFieldError("income") ? "income-error" : undefined}
                             />
+                            {getFieldError("income") && (
+                                <p id="income-error" className="text-red-400 text-xs flex items-center gap-1 mt-1">
+                                    <AlertCircle className="w-3 h-3" /> {getFieldError("income")}
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm text-gray-400 flex items-center gap-2"><GraduationCap className="w-4 h-4" /> Current Education Level</label>

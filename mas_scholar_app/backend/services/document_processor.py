@@ -23,8 +23,20 @@ class DocumentProcessor:
         try:
             # Text based formats
             if ext in ['txt', 'md', 'markdown', 'csv', 'json']:
-                text = content.decode('utf-8')
-                
+                # Try multiple encodings for robustness
+                text = None
+                for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']:
+                    try:
+                        text = content.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+
+                if text is None:
+                    # Last resort: decode with replacement characters
+                    text = content.decode('utf-8', errors='replace')
+                    logger.warning(f"⚠️ File {filename} decoded with replacement chars")
+
                 # Special handling for JSON structured data
                 if ext == 'json':
                     try:

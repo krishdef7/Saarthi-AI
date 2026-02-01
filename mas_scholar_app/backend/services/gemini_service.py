@@ -120,15 +120,22 @@ Return ONLY valid JSON, no markdown or explanations."""
 
         response = model.generate_content(prompt)
         result_text = response.text.strip()
-        
+
         # Parse JSON from response
         import json
-        # Clean response if wrapped in markdown
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-        
+        import re
+
+        # Clean response if wrapped in markdown code blocks
+        # Handle both ```json and plain ``` formats
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
+        if json_match:
+            result_text = json_match.group(1).strip()
+        else:
+            # Try to find raw JSON object
+            json_obj_match = re.search(r'\{[\s\S]*\}', result_text)
+            if json_obj_match:
+                result_text = json_obj_match.group(0)
+
         profile = json.loads(result_text)
         
         # Validate and clean profile
@@ -193,13 +200,20 @@ Return ONLY a JSON object:
 
         response = model.generate_content(prompt)
         result_text = response.text.strip()
-        
+
         import json
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-        
+        import re
+
+        # Clean response if wrapped in markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
+        if json_match:
+            result_text = json_match.group(1).strip()
+        else:
+            # Try to find raw JSON object
+            json_obj_match = re.search(r'\{[\s\S]*\}', result_text)
+            if json_obj_match:
+                result_text = json_obj_match.group(0)
+
         data = json.loads(result_text)
         
         return {

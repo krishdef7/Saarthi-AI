@@ -7,6 +7,7 @@ not in our verified database. Returns simplified results marked as external.
 
 import logging
 import asyncio
+import hashlib
 from typing import List, Dict, Any, Optional
 from duckduckgo_search import DDGS
 
@@ -62,8 +63,10 @@ async def search_web_scholarships(
             # Prefer .in, .gov.in, .org.in
             is_indian_domain = any(x in url for x in [".in", "india", "gov.in", "nic.in"])
             
+            # Use deterministic hash for consistent IDs across sessions
+            url_hash = hashlib.md5(result.get('href', '').encode()).hexdigest()[:8]
             web_scholarships.append({
-                "id": f"web-{i}-{hash(result.get('href', '')) % 10000}",
+                "id": f"web-{url_hash}",
                 "name": _clean_title(result.get("title", "External Scholarship")),
                 "provider": domain,
                 "amount": 0,  # Unknown from web

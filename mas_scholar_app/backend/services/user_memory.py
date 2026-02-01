@@ -114,10 +114,12 @@ async def get_user_history(user_id: str, limit: int = 10) -> List[Dict]:
             with_payload=True
         )
         
-        interactions = [point.payload for point in results[0]]
+        # Safely handle empty results (scroll returns tuple: (points, next_offset))
+        points = results[0] if results and len(results) > 0 else []
+        interactions = [point.payload for point in points] if points else []
         # Sort by timestamp descending
         interactions.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        
+
         return interactions[:limit]
         
     except Exception as e:

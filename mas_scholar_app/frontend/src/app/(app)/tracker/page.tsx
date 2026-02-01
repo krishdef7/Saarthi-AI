@@ -17,12 +17,22 @@ export default function TrackerPage() {
     const [tracked, setTracked] = useState<TrackedScholarship[]>([]);
 
     useEffect(() => {
-        // Load from localStorage
-        const saved = localStorage.getItem("mas_scholar_tracked");
-        if (saved) {
-            setTracked(JSON.parse(saved));
-        } else {
-            // Demo data
+        // Load from localStorage with safe parsing
+        try {
+            const saved = localStorage.getItem("mas_scholar_tracked");
+            if (saved) {
+                setTracked(JSON.parse(saved));
+            } else {
+                // Demo data
+                setTracked([
+                    { id: "demo-1", name: "Post-Matric Scholarship for SC Students", provider: "Ministry of Social Justice", amount: 52000, deadline: "2026-03-31" },
+                    { id: "demo-2", name: "Merit-cum-Means for Minorities", provider: "Ministry of Minority Affairs", amount: 30000, deadline: "2026-03-31" }
+                ]);
+            }
+        } catch (e) {
+            console.warn("Failed to parse tracked items from localStorage");
+            localStorage.removeItem("mas_scholar_tracked");
+            // Load demo data on error
             setTracked([
                 { id: "demo-1", name: "Post-Matric Scholarship for SC Students", provider: "Ministry of Social Justice", amount: 52000, deadline: "2026-03-31" },
                 { id: "demo-2", name: "Merit-cum-Means for Minorities", provider: "Ministry of Minority Affairs", amount: 30000, deadline: "2026-03-31" }

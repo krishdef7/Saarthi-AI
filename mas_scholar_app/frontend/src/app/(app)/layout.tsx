@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import MemoryStream from '@/components/MemoryStream';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface SavedProfile {
     name?: string;
@@ -29,9 +30,14 @@ export default function AppLayout({
     const [profile, setProfile] = useState<SavedProfile | null>(null);
 
     useEffect(() => {
-        const saved = localStorage.getItem('mas_scholar_profile');
-        if (saved) {
-            setProfile(JSON.parse(saved));
+        try {
+            const saved = localStorage.getItem('mas_scholar_profile');
+            if (saved) {
+                setProfile(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.warn("Failed to parse profile from localStorage");
+            localStorage.removeItem('mas_scholar_profile');
         }
     }, []);
 
@@ -96,12 +102,14 @@ export default function AppLayout({
 
                 {/* SCROLLABLE PAGE CONTENT */}
                 <div className="flex-1 overflow-y-auto scrollbar-hide">
-                    {children}
+                    <ErrorBoundary>
+                        {children}
+                    </ErrorBoundary>
                 </div>
             </main>
 
-            {/* RIGHT SIDEBAR - AGENT MEMORY */}
-            <MemoryStream />
+            {/* RIGHT SIDEBAR - AGENT MEMORY (hidden on search page, replaced by AgentPipeline) */}
+            {pathname !== '/search' && <MemoryStream />}
         </div>
     );
 }

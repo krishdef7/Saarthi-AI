@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ShieldCheck, CheckCircle2, XCircle, AlertTriangle, FileText, ExternalLink, Share2, Heart, Info, Clock, Ban, Brain, ChevronDown, ChevronUp } from "lucide-react";
 import EligibilityRadar from "@/components/RadarChart";
 import { DetailsSkeleton } from "@/components/Skeletons";
+import Toast, { useToast } from "@/components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -40,8 +41,14 @@ interface EligibilityData {
 
 function getSavedProfile() {
     if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem("mas_scholar_profile");
-    return saved ? JSON.parse(saved) : null;
+    try {
+        const saved = localStorage.getItem("mas_scholar_profile");
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+        console.warn("Failed to parse profile from localStorage, clearing corrupted data");
+        localStorage.removeItem("mas_scholar_profile");
+        return null;
+    }
 }
 
 export default function DetailsPage() {
@@ -51,8 +58,10 @@ export default function DetailsPage() {
     const [scholarship, setScholarship] = useState<Scholarship | null>(null);
     const [eligibility, setEligibility] = useState<EligibilityData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [isShortlisted, setIsShortlisted] = useState(false);
     const [showFullBreakdown, setShowFullBreakdown] = useState(false);
+    const { toast, showToast, hideToast } = useToast();
 
     // Log click interaction to memory
     const logClickInteraction = async () => {
@@ -71,8 +80,8 @@ export default function DetailsPage() {
                     interaction_type: 'click'
                 })
             });
-        } catch (e) {
-            console.log('Failed to log interaction');
+        } catch {
+            // Silent fail - interaction logging is non-critical
         }
     };
 
@@ -95,8 +104,10 @@ export default function DetailsPage() {
                     const eligData = await eligRes.json();
                     setEligibility(eligData);
                 }
-            } catch (error) {
-                console.error("Failed to load details", error);
+            } catch (err) {
+                console.error("Failed to load details", err);
+                setError(err instanceof Error ? err.message : "Failed to load scholarship details");
+                setScholarship(null);
             } finally {
                 setLoading(false);
             }
@@ -107,19 +118,30 @@ export default function DetailsPage() {
             setTimeout(() => logClickInteraction(), 500);
         }
 
-        // Check if already shortlisted
-        const saved = localStorage.getItem("mas_scholar_shortlist");
-        if (saved) {
-            const shortlist = JSON.parse(saved);
-            setIsShortlisted(shortlist.some((s: { id: string }) => s.id === id));
+        // Check if already shortlisted (with safe JSON parsing)
+        try {
+            const saved = localStorage.getItem("mas_scholar_shortlist");
+            if (saved) {
+                const shortlist = JSON.parse(saved);
+                setIsShortlisted(shortlist.some((s: { id: string }) => s.id === id));
+            }
+        } catch (e) {
+            console.warn("Failed to parse shortlist from localStorage");
+            localStorage.removeItem("mas_scholar_shortlist");
         }
     }, [id]);
 
     const toggleShortlist = () => {
         if (!scholarship) return;
 
-        const saved = localStorage.getItem("mas_scholar_shortlist");
-        let shortlist = saved ? JSON.parse(saved) : [];
+        let shortlist: Array<{ id: string; name: string; provider: string; amount: number; saved_at: string }> = [];
+        try {
+            const saved = localStorage.getItem("mas_scholar_shortlist");
+            shortlist = saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.warn("Failed to parse shortlist, starting fresh");
+            shortlist = [];
+        }
 
         if (isShortlisted) {
             shortlist = shortlist.filter((s: { id: string }) => s.id !== id);
@@ -135,9 +157,34 @@ export default function DetailsPage() {
 
         localStorage.setItem("mas_scholar_shortlist", JSON.stringify(shortlist));
         setIsShortlisted(!isShortlisted);
+
+        // Show toast notification
+        if (!isShortlisted) {
+            showToast(`${scholarship.name} added to shortlist`, 'success');
+        } else {
+            showToast(`Removed from shortlist`, 'info');
+        }
     };
 
     if (loading) return <DetailsSkeleton />;
+
+    if (error) {
+        return (
+            <div className="p-10 text-center">
+                <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-500/30">
+                    <AlertTriangle className="text-rose-400" size={24} />
+                </div>
+                <h3 className="text-rose-400 font-medium mb-2">Failed to load scholarship</h3>
+                <p className="text-slate-500 text-sm mb-4">{error}</p>
+                <button
+                    onClick={() => router.back()}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition"
+                >
+                    Go Back
+                </button>
+            </div>
+        );
+    }
 
     if (!scholarship) return <div className="p-10 text-center text-slate-500">Scholarship not found.</div>;
 
@@ -172,8 +219,8 @@ export default function DetailsPage() {
                                     await navigator.clipboard.writeText(window.location.href);
                                     alert('Link copied to clipboard!');
                                 }
-                            } catch (e) {
-                                console.log('Share failed');
+                            } catch {
+                                // Share cancelled by user or failed - silent fail
                             }
                         }}
                         className="p-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
@@ -363,6 +410,14 @@ export default function DetailsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Toast Notification */}
+            <Toast
+                message={toast.message}
+                show={toast.show}
+                type={toast.type}
+                onClose={hideToast}
+            />
         </div>
     );
 }

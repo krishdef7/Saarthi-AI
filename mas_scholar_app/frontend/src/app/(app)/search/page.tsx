@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Filter, ChevronRight, ShieldCheck, Clock, CheckCircle2, CircleDashed, AlertTriangle, Brain } from "lucide-react";
+import { Search, Filter, ChevronRight, ShieldCheck, Clock, CheckCircle2, CircleDashed, AlertTriangle, Brain, Zap } from "lucide-react";
 import Link from "next/link";
 import { v4 as uuidv4 } from 'uuid';
 import { MOCK_SCHOLARSHIPS } from "@/lib/mockData";
 import { SearchSkeletonList } from "@/components/Skeletons";
+import { useAgentPipeline } from "@/hooks/useAgentPipeline";
+import AgentPipeline from "@/components/AgentPipeline";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -39,8 +41,14 @@ interface Scholarship {
 
 function getSavedProfile() {
     if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem("mas_scholar_profile");
-    return saved ? JSON.parse(saved) : null;
+    try {
+        const saved = localStorage.getItem("mas_scholar_profile");
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+        console.warn("Failed to parse profile from localStorage, clearing corrupted data");
+        localStorage.removeItem("mas_scholar_profile");
+        return null;
+    }
 }
 
 export default function SearchPage() {
@@ -54,6 +62,13 @@ export default function SearchPage() {
     const [currentStage, setCurrentStage] = useState("START");
     const [latency, setLatency] = useState(0);
     const [memoryActive, setMemoryActive] = useState(false);
+    const [showPipeline, setShowPipeline] = useState(false);
+
+    // Agent Pipeline WebSocket hook
+    const pipeline = useAgentPipeline();
+
+    // AbortController ref to cancel in-flight requests
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     // Real WebSocket connection for stage updates
     useEffect(() => {
@@ -90,7 +105,15 @@ export default function SearchPage() {
     const performSearch = useCallback(async (searchQuery: string) => {
         if (!searchQuery.trim()) return;
 
+        // Cancel any in-flight request to prevent race conditions
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
         setIsLoading(true);
+        setShowPipeline(true);
         const newSearchId = uuidv4();
 
         // Update URL strictly
@@ -99,7 +122,10 @@ export default function SearchPage() {
         params.set("search_id", newSearchId);
         router.replace(`/search?${params.toString()}`);
 
-        const profile = getSavedProfile();
+        const profile = getSavedProfile() || {};
+
+        // Start WebSocket pipeline for live visualization
+        pipeline.connect(searchQuery, profile);
 
         try {
             const response = await fetch(`${API_BASE}/api/search`, {
@@ -111,7 +137,8 @@ export default function SearchPage() {
                     profile: profile,
                     filters: { category: "All" }, // Simplify for MVP
                     top_k: 20
-                })
+                }),
+                signal
             });
 
             if (!response.ok) throw new Error("API Error");
@@ -122,15 +149,23 @@ export default function SearchPage() {
             setMemoryActive(data.memory_influenced || false);
 
         } catch (error) {
+            // Ignore aborted requests - they're intentional
+            if (error instanceof Error && error.name === 'AbortError') {
+                return;
+            }
             console.error("Search failed:", error);
             console.warn("⚠️ Using Offline Fallback Data");
             await new Promise(r => setTimeout(r, 1500)); // Fake latency for fallback feel
             setResults(MOCK_SCHOLARSHIPS);
             setLatency(45);
         } finally {
-            setIsLoading(false);
-            setCurrentStage("COMPLETE");
+            // Only update state if this request wasn't aborted
+            if (!signal.aborted) {
+                setIsLoading(false);
+                setCurrentStage("COMPLETE");
+            }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, searchParams]);
 
     // Initial load
@@ -146,22 +181,45 @@ export default function SearchPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen">
+        <div className="flex min-h-screen">
+            {/* Main Content - add padding when pipeline is shown */}
+            <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${showPipeline ? 'lg:pr-80' : ''}`}>
             {/* Search Header Area */}
             <div className="p-6 border-b border-slate-800 bg-slate-950/50">
                 <div className="max-w-4xl mx-auto space-y-4">
-                    <form onSubmit={handleSearchSubmit} className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
+                    <form onSubmit={handleSearchSubmit} className="relative" role="search">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" aria-hidden="true" />
                         <input
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search scholarships (e.g., 'merit scholarship for engineering' or 'government scholarship')..."
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-12 pr-4 text-slate-200 placeholder:text-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all outline-none font-medium"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-12 pr-28 text-slate-200 placeholder:text-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all outline-none font-medium"
+                            aria-label="Search scholarships"
+                            autoComplete="off"
                         />
-                        <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 btn-primary text-xs py-1.5 ">
-                            Search
-                        </button>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowPipeline(!showPipeline)}
+                                className={`p-2 rounded-lg transition-all ${
+                                    showPipeline
+                                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                                }`}
+                                aria-label={showPipeline ? "Hide agent pipeline" : "Show agent pipeline"}
+                                aria-expanded={showPipeline}
+                            >
+                                <Zap size={16} className={pipeline.isActive ? 'animate-pulse' : ''} />
+                            </button>
+                            <button
+                                type="submit"
+                                className="btn-primary text-xs py-1.5"
+                                aria-label="Search scholarships"
+                            >
+                                Search
+                            </button>
+                        </div>
                     </form>
 
                     {/* Progress Rail */}
@@ -231,7 +289,7 @@ export default function SearchPage() {
 
                     {/* Results List */}
                     {!isLoading && (
-                        <div className="space-y-4">
+                        <div className="space-y-4" role="region" aria-label="Search results" aria-live="polite" aria-atomic="false">
                             <AnimatePresence>
                                 {results.map((sch, idx) => (
                                     <motion.div
@@ -362,13 +420,26 @@ export default function SearchPage() {
                             </AnimatePresence>
 
                             {/* Empty State - No results for query */}
-                            {results.length === 0 && query && (
-                                <div className="text-center py-20">
-                                    <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
-                                        <Search className="text-slate-600" size={24} />
+                            {results.length === 0 && query && !isLoading && (
+                                <div className="flex flex-col items-center justify-center py-16 px-4">
+                                    <div className="text-6xl mb-4">🔍</div>
+                                    <h3 className="text-xl font-semibold text-slate-200 mb-2">
+                                        No scholarships found
+                                    </h3>
+                                    <p className="text-slate-400 text-center mb-6 max-w-md">
+                                        We couldn&apos;t find scholarships matching &quot;{query}&quot;. Try adjusting your search or profile settings.
+                                    </p>
+                                    <div className="bg-slate-800/50 rounded-lg p-4 space-y-2 text-sm text-slate-300 max-w-md">
+                                        <p className="flex items-center gap-2">
+                                            <span>💡</span> Use broader keywords (e.g., &quot;engineering&quot; instead of &quot;mechanical engineering&quot;)
+                                        </p>
+                                        <p className="flex items-center gap-2">
+                                            <span>💡</span> Check your category and income in profile settings
+                                        </p>
+                                        <p className="flex items-center gap-2">
+                                            <span>💡</span> Try searching by provider name or state
+                                        </p>
                                     </div>
-                                    <h3 className="text-slate-300 font-medium">No results found</h3>
-                                    <p className="text-slate-500 text-sm mt-1">Try adjusting your search terms.</p>
                                 </div>
                             )}
 
@@ -400,6 +471,22 @@ export default function SearchPage() {
                     )}
                 </div>
             </div>
+            </div>
+
+            {/* Agent Pipeline Panel */}
+            <AnimatePresence>
+                {showPipeline && (
+                    <AgentPipeline
+                        stages={pipeline.stages}
+                        currentStage={pipeline.currentStage}
+                        progress={pipeline.progress}
+                        isActive={pipeline.isActive}
+                        totalLatency={pipeline.totalLatency}
+                        error={pipeline.error}
+                        onClose={() => setShowPipeline(false)}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }

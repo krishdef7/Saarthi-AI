@@ -1,0 +1,26 @@
+services:
+  # Backend API
+  - type: web
+    name: saarthi-backend
+    env: python
+    region: singapore
+    plan: free
+    rootDir: mas_scholar_app/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.10.0"
+      - key: QDRANT_HOST
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "https://saarthi-ai.vercel.app"
+    autoDeploy: true
+
+# Note: For Qdrant, use Qdrant Cloud free tier at https://cloud.qdrant.io
+# Then add your Qdrant host and API key in the environment variables above

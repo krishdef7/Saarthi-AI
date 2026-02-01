@@ -1,17 +1,32 @@
 "use client";
 
+import { memo, useMemo } from 'react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts';
 
 interface RadarProps {
     data: Record<string, number>;
 }
 
-export default function EligibilityRadar({ data }: RadarProps) {
-    const chartData = Object.entries(data).map(([subject, A]) => ({
-        subject,
-        A,
-        fullMark: 100,
-    }));
+const EligibilityRadar = memo(function EligibilityRadar({ data }: RadarProps) {
+    // Memoize chart data transformation
+    const chartData = useMemo(() => {
+        if (!data || Object.keys(data).length === 0) return null;
+
+        return Object.entries(data).map(([subject, A]) => ({
+            subject,
+            A: A ?? 0,
+            fullMark: 100,
+        }));
+    }, [data]);
+
+    // Handle null/undefined/empty data gracefully
+    if (!chartData) {
+        return (
+            <div className="w-full h-[250px] flex items-center justify-center text-slate-500 text-sm">
+                No eligibility data available
+            </div>
+        );
+    }
 
     return (
         <div className="w-full h-[250px] relative">
@@ -45,4 +60,6 @@ export default function EligibilityRadar({ data }: RadarProps) {
             </ResponsiveContainer>
         </div>
     );
-}
+});
+
+export default EligibilityRadar;

@@ -18,10 +18,15 @@ export default function ShortlistPage() {
     const [items, setItems] = useState<SavedScholarship[]>([]);
 
     useEffect(() => {
-        // Load from localStorage
-        const saved = localStorage.getItem("mas_scholar_shortlist");
-        if (saved) {
-            setItems(JSON.parse(saved));
+        // Load from localStorage with safe parsing
+        try {
+            const saved = localStorage.getItem("mas_scholar_shortlist");
+            if (saved) {
+                setItems(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.warn("Failed to parse shortlist from localStorage");
+            localStorage.removeItem("mas_scholar_shortlist");
         }
     }, []);
 

@@ -105,8 +105,15 @@ async def get_statistics(request: Request):
     total = len(scholarships)
     verified = sum(1 for s in scholarships if s.get("verified", False))
     
-    # Calculate total value
-    total_value = sum(s.get("amount", 0) for s in scholarships)
+    # Calculate total value (using amount_max or amount_min as fallback, consistent with search)
+    def get_amount(s):
+        val = s.get("amount_max") or s.get("amount_min") or s.get("amount") or 0
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0
+
+    total_value = sum(get_amount(s) for s in scholarships)
     total_value_cr = total_value / 10000000  # Convert to crores
     
     # Category breakdown

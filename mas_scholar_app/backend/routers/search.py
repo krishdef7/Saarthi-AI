@@ -10,7 +10,7 @@ from services.hybrid_search import search_scholarships, get_search_status
 from services.websocket import broadcast_agent_event
 from services.user_memory import get_user_id, log_interaction, get_personalization_boost
 from services.web_search import search_web_scholarships
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 import time
 import logging
@@ -19,6 +19,16 @@ import asyncio
 logger = logging.getLogger("mas_scholar_api.search")
 
 router = APIRouter()
+
+
+def safe_int(value, default=0):
+    """Safely convert value to int, handling strings, floats, None."""
+    if value is None:
+        return default
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
 
 
 class EnrichedScholarshipResult(BaseModel):
@@ -124,34 +134,36 @@ async def search(input: SearchInput):
         # Map VERIFIED results to ENRICHED schema
         final_results = []
         for r in results:
+            # Get amount - prefer amount_max, fallback to amount_min, then amount (with safe conversion)
+            scholarship_amount = r.get("amount_max") or r.get("amount_min") or r.get("amount") or 0
             final_results.append(EnrichedScholarshipResult(
                 id=str(r.get("id", "")),
                 name=r.get("name", "Unknown"),
                 provider=r.get("provider", "Unknown"),
-                amount=int(r.get("amount", 0)),
+                amount=safe_int(scholarship_amount),
                 deadline=r.get("application_deadline") or "Rolling",
                 application_link=r.get("application_link"),
-                match_score=int(r.get("match_score", 0)),
+                match_score=safe_int(r.get("match_score", 0)),
                 verified=bool(r.get("verified", False)),
                 eligibility_status=r.get("eligibility_status", "unknown"),
                 category=r.get("category", []),
                 deadline_info=r.get("deadline_info"),
                 scam_indicators=r.get("scam_indicators", []),
-                trust_score=float(r.get("trust_score", 0.5)),
+                trust_score=float(r.get("trust_score", 0.5) or 0.5),
                 radar_scores=r.get("radar_scores", {}),
                 is_web_result=False
             ))
-        
+
         # Append WEB results (marked as external)
         for wr in web_results:
             final_results.append(EnrichedScholarshipResult(
                 id=str(wr.get("id", "")),
                 name=wr.get("name", "External Scholarship"),
                 provider=wr.get("provider", "Web Source"),
-                amount=int(wr.get("amount", 0)),
+                amount=safe_int(wr.get("amount", 0)),
                 deadline=wr.get("deadline", "Check source"),
                 application_link=wr.get("application_link"),
-                match_score=int(wr.get("match_score", 50)),
+                match_score=safe_int(wr.get("match_score", 50), 50),
                 verified=False,
                 eligibility_status="check_source",
                 category=[],
@@ -173,16 +185,21 @@ async def search(input: SearchInput):
             meta={"latency_ms": round(latency, 1), "total": len(final_results), "web_results": len(web_results)}
         )
         
-        # Log this search interaction to memory
+        # Log this search interaction to memory (fire-and-forget with error handling)
         if results:
-            # Log interaction with top result
-            asyncio.create_task(log_interaction(
-                user_id=user_id,
-                scholarship_id=str(results[0].get("id", "")),
-                scholarship_name=results[0].get("name", ""),
-                interaction_type="search",
-                query=input.query.strip()
-            ))
+            async def safe_log_interaction():
+                try:
+                    await log_interaction(
+                        user_id=user_id,
+                        scholarship_id=str(results[0].get("id", "")),
+                        scholarship_name=results[0].get("name", ""),
+                        interaction_type="search",
+                        query=input.query.strip()
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to log search interaction: {e}")
+
+            asyncio.create_task(safe_log_interaction())
         
         return EnrichedSearchResponse(
             results=final_results,
@@ -202,10 +219,10 @@ async def search(input: SearchInput):
 
 class LogInteractionInput(BaseModel):
     """Input for logging user interactions."""
-    user_id: str
-    scholarship_id: str
-    scholarship_name: str
-    interaction_type: str = "click"  # click, shortlist
+    user_id: str = Field(..., min_length=1, max_length=100)
+    scholarship_id: str = Field(..., min_length=1, max_length=100)
+    scholarship_name: str = Field(..., min_length=1, max_length=500)
+    interaction_type: str = Field(default="click", pattern="^(click|shortlist|view|apply)$")
 
 
 @router.post("/log-interaction")

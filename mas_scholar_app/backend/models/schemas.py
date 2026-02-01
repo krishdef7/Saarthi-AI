@@ -1,24 +1,77 @@
 """
 Strict Pydantic Models for API Contracts.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Optional
 from uuid import UUID
 from datetime import datetime
+import re
 from .enums import Category, EducationLevel, SearchStage
+
+# Valid Indian states for validation
+VALID_STATES = {
+    "All India", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+    "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh",
+    "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra",
+    "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+    "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+    "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi",
+    "Jammu and Kashmir", "Ladakh", "Chandigarh", "Puducherry",
+    "Andaman and Nicobar Islands", "Dadra and Nagar Haveli",
+    "Daman and Diu", "Lakshadweep"
+}
+
 
 class UserProfile(BaseModel):
     category: Category = Field(default=Category.GENERAL)
     state: str = Field(default="All India")
-    income: int = Field(default=500000, description="Annual family income")
+    income: int = Field(default=500000, ge=0, le=100000000, description="Annual family income")
     education: EducationLevel = Field(default=EducationLevel.UNDERGRADUATE)
     gender: str = Field(default="Any")
 
+    @field_validator("state")
+    @classmethod
+    def validate_state(cls, v: str) -> str:
+        if v and v not in VALID_STATES:
+            # Accept unknown states but normalize
+            return v.strip().title() if v.strip() else "All India"
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str) -> str:
+        valid_genders = {"Any", "Male", "Female", "Other"}
+        if v not in valid_genders:
+            return "Any"
+        return v
+
+
 class SearchInput(BaseModel):
-    search_id: str = Field(..., description="Client-generated UUID for WebSocket pairing")
-    query: str
+    search_id: str = Field(..., min_length=1, max_length=100, description="Client-generated UUID for WebSocket pairing")
+    query: str = Field(..., min_length=1, max_length=500)
     profile: Optional[UserProfile] = None
-    top_k: int = Field(default=10, le=50)
+    top_k: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("search_id")
+    @classmethod
+    def validate_search_id(cls, v: str) -> str:
+        # Allow UUID format or simple alphanumeric IDs
+        v = v.strip()
+        if not v:
+            raise ValueError("search_id cannot be empty")
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', v):
+            raise ValueError("search_id must be alphanumeric with hyphens/underscores only")
+        return v
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Query cannot be empty")
+        if len(v) > 500:
+            raise ValueError("Query too long (max 500 characters)")
+        return v
 
 class WSEvent(BaseModel):
     """

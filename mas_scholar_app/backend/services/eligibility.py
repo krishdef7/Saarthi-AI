@@ -22,23 +22,58 @@ logger = logging.getLogger("mas_scholar_api.eligibility")
 def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, List[Dict], str]:
     """
     Calculate eligibility match score with TRANSPARENT methodology.
-    
+
     Args:
         scholarship: Scholarship data
         profile: User profile with category, income, state, etc.
-    
+
     Returns:
         Tuple of (score, detailed_reasons, status)
     """
     score = 0
     reasons = []
     is_expired = False
-    
+
+    # =========================================================================
+    # FIELD NORMALIZATION (handle different data formats)
+    # =========================================================================
+    # Category: "category" or "categories"
+    sch_categories_raw = scholarship.get("category") or scholarship.get("categories") or []
+    # Normalize "All" to empty list (means all categories eligible)
+    if sch_categories_raw == ["All"] or sch_categories_raw == "All":
+        sch_categories_raw = []
+
+    # Income: "max_income" or "income_limit"
+    max_income = scholarship.get("max_income") or scholarship.get("income_limit")
+
+    # Education: "education_level" or "education_levels"
+    sch_education_raw = scholarship.get("education_level") or scholarship.get("education_levels") or []
+
+    # Deadline: "application_deadline" or "deadline"
+    deadline_str = scholarship.get("application_deadline") or scholarship.get("deadline")
+
+    # Gender: default to "All" if not specified
+    sch_gender = scholarship.get("gender", "All")
+
+    # Trust score: default to 0.8 for verified government sources
+    trust_score = scholarship.get("trust_score")
+    if trust_score is None:
+        # Infer trust from provider type
+        provider_type = scholarship.get("scholarship_type", "").lower()
+        if "government" in provider_type:
+            trust_score = 0.95
+        elif scholarship.get("source_url", "").endswith(".gov.in"):
+            trust_score = 0.9
+        else:
+            trust_score = 0.7
+
+    verified = scholarship.get("verified", False)
+
     # =========================================================================
     # 1. CATEGORY MATCH (30 points)
     # =========================================================================
     user_category = profile.get("category", "General")
-    sch_categories = scholarship.get("category", [])
+    sch_categories = sch_categories_raw if isinstance(sch_categories_raw, list) else [sch_categories_raw]
     
     if not sch_categories or user_category in sch_categories:
         score += 30
@@ -68,7 +103,7 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # 2. INCOME ELIGIBILITY (25 points)
     # =========================================================================
     user_income = profile.get("income", 0)
-    max_income = scholarship.get("max_income")
+    # max_income already normalized above
     
     if max_income is None:
         score += 25
@@ -144,7 +179,7 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # 4. GENDER MATCH (10 points)
     # =========================================================================
     user_gender = profile.get("gender", "")
-    sch_gender = scholarship.get("gender", "All")
+    # sch_gender already normalized at top
     
     if sch_gender == "All" or not user_gender or user_gender == sch_gender:
         score += 10
@@ -174,7 +209,8 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # 5. EDUCATION LEVEL (10 points)
     # =========================================================================
     user_education = profile.get("education", "").lower()
-    sch_education = [e.lower() for e in scholarship.get("education_level", [])]
+    # Use normalized sch_education_raw from top
+    sch_education = [e.lower() for e in sch_education_raw] if sch_education_raw else []
     
     if not sch_education or not user_education:
         score += 10
@@ -215,9 +251,7 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # =========================================================================
     # 6. SOURCE TRUST (10 points)
     # =========================================================================
-    trust_score = scholarship.get("trust_score", 0.5)
-    verified = scholarship.get("verified", False)
-    
+    # trust_score and verified already normalized at top
     trust_points = int(10 * trust_score)
     score += trust_points
     
@@ -235,7 +269,7 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # =========================================================================
     # 7. DEADLINE CHECK (affects status only)
     # =========================================================================
-    deadline_str = scholarship.get("application_deadline")
+    # deadline_str already normalized at top
     deadline_info = get_deadline_info(deadline_str)
     
     if deadline_info["is_expired"]:
@@ -265,6 +299,9 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
     # =========================================================================
     # DETERMINE OVERALL STATUS
     # =========================================================================
+    # Clamp score to valid range [0, 100]
+    score = max(0, min(100, score))
+
     if is_expired:
         status = "not_eligible"
     elif score >= 85:
@@ -273,7 +310,7 @@ def calculate_eligibility_match(scholarship: Dict, profile: Dict) -> Tuple[int, 
         status = "conditional"
     else:
         status = "not_eligible"
-    
+
     return score, reasons, status
 
 def compute_radar_scores(reasons: List[Dict]) -> Dict[str, int]:

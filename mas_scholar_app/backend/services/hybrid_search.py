@@ -18,6 +18,7 @@ import time
 import logging
 import hashlib
 import asyncio
+import threading
 from typing import Dict, List, Optional, Tuple, Any
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -29,12 +30,56 @@ from .safety import validate_scholarship, get_deadline_info
 
 logger = logging.getLogger("mas_scholar_api.search")
 
-# Global state
+# Global state with thread safety
+_search_lock = threading.RLock()
 _scholarships: List[Dict] = []
 _bm25_index: Dict = {}
 _embedder = None
 _qdrant_client = None
 _search_mode = "bm25"  # "hybrid", "vector", "bm25"
+
+# Simple search cache (5 min TTL)
+_search_cache: Dict[str, Tuple[float, List[Dict], float, List[str]]] = {}
+_cache_ttl = 300  # 5 minutes
+_cache_max_size = 100  # Max cached queries
+
+
+def _get_cache_key(query: str, profile: Dict, filters: Dict) -> str:
+    """Generate deterministic cache key from search params."""
+    cache_data = f"{query.lower().strip()}:{sorted(profile.items())}:{sorted((filters or {}).items())}"
+    return hashlib.md5(cache_data.encode()).hexdigest()
+
+
+def _cleanup_cache():
+    """Remove expired cache entries (thread-safe)."""
+    global _search_cache
+    with _search_lock:
+        now = time.time()
+        expired_keys = [k for k, (ts, _, _, _) in _search_cache.items() if now - ts > _cache_ttl]
+        for k in expired_keys:
+            del _search_cache[k]
+
+        # Also limit cache size
+        if len(_search_cache) > _cache_max_size:
+            sorted_keys = sorted(_search_cache.keys(), key=lambda k: _search_cache[k][0])
+            for k in sorted_keys[:len(_search_cache) - _cache_max_size]:
+                del _search_cache[k]
+
+
+def _get_cached_result(cache_key: str) -> Optional[Tuple[float, List[Dict], float, List[str]]]:
+    """Thread-safe cache read."""
+    with _search_lock:
+        if cache_key in _search_cache:
+            cached_time, cached_results, cached_latency, cached_logs = _search_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                return (cached_time, cached_results, cached_latency, cached_logs)
+    return None
+
+
+def _set_cached_result(cache_key: str, results: List[Dict], latency: float, logs: List[str]):
+    """Thread-safe cache write."""
+    with _search_lock:
+        _search_cache[cache_key] = (time.time(), results, latency, logs)
 
 # ============================================================================
 # BM25 RETRIEVER
@@ -148,27 +193,29 @@ async def initialize_search_engine(scholarships: List[Dict]):
                 collection_name="scholarships",
                 vectors_config=VectorParams(size=384, distance=Distance.COSINE)
             )
-            
+
             # Index scholarships ONLY if new collection
             points = []
             for i, sch in enumerate(scholarships):
                 doc_id = sch.get("id", f"sch_{i}")
                 text = f"{sch.get('name', '')} {sch.get('description', '')} {' '.join(sch.get('category', []))}"
                 embedding = _embedder.encode(text).tolist()
-                
+
                 points.append(PointStruct(
                     id=i,
                     vector=embedding,
                     payload={"doc_id": doc_id, "index": i}
                 ))
-            
+
             _qdrant_client.upsert(collection_name="scholarships", points=points)
             logger.info(f"✅ Indexed {len(points)} scholarships to persistent storage")
         else:
-             logger.info("💾 Loaded existing Qdrant collection")
-        
+            logger.info("💾 Loaded existing Qdrant collection")
+
         _search_mode = "hybrid"
-        logger.info(f"✅ Vector search initialized with {len(points)} vectors")
+        # Get actual count from collection (fixes undefined 'points' variable bug)
+        collection_info = _qdrant_client.get_collection("scholarships")
+        logger.info(f"✅ Vector search initialized with {collection_info.points_count} vectors")
         
     except Exception as e:
         logger.warning(f"⚠️ Vector search unavailable, using BM25 only: {e}")
@@ -233,21 +280,31 @@ async def search_scholarships(
 ) -> Tuple[List[Dict], float, List[str]]:
     """
     Production hybrid search with RRF fusion.
-    
+
     Args:
         query: Search query text
         profile: User profile for eligibility matching
         filters: Category, state, etc. filters
         top_k: Number of results to return
         only_eligible: Only return eligible scholarships
-    
+
     Returns:
         Tuple of (results, latency_ms, search_logs)
     """
     start = time.time()
     logs = []
     filters = filters or {}
-    
+
+    # Check cache first (thread-safe)
+    cache_key = _get_cache_key(query, profile, filters)
+    _cleanup_cache()
+
+    cached = _get_cached_result(cache_key)
+    if cached:
+        _, cached_results, cached_latency, cached_logs = cached
+        logger.info(f"⚡ Cache hit for query: '{query}'")
+        return cached_results[:top_k], cached_latency, ["⚡ CACHE HIT"] + cached_logs
+
     logs.append(f"🔍 Query: '{query}' | Mode: {_search_mode}")
     
     # =========================================================================
@@ -344,9 +401,12 @@ async def search_scholarships(
     
     results.sort(key=lambda x: x.get("match_score", 0), reverse=True)
     results = results[:top_k]
-    
+
     latency = (time.time() - start) * 1000
     logs.append(f"⚡ Total latency: {latency:.1f}ms")
     logs.append(f"✅ Returning {len(results)} results")
-    
+
+    # Store in cache (thread-safe)
+    _set_cached_result(cache_key, results, latency, logs)
+
     return results, latency, logs

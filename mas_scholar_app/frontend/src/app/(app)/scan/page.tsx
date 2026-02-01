@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, FileImage, AlertTriangle, CheckCircle, Loader2, Search, X, Sparkles, FileText } from "lucide-react";
 import Link from "next/link";
@@ -33,6 +33,11 @@ export default function ScanPage() {
     const processFile = useCallback(async (file: File) => {
         setIsProcessing(true);
         setError(null);
+
+        // Revoke previous URL to prevent memory leak
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+        }
         setPreviewUrl(URL.createObjectURL(file));
 
         const formData = new FormData();
@@ -100,17 +105,36 @@ export default function ScanPage() {
     };
 
     const reset = () => {
+        // Revoke object URL to prevent memory leak
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+        }
         setExtractedData(null);
         setPreviewUrl(null);
         setError(null);
     };
 
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
+
     const applyToProfile = () => {
         if (!extractedData) return;
 
         // Save extracted data to profile
-        const existing = localStorage.getItem('mas_scholar_profile');
-        const profile = existing ? JSON.parse(existing) : {};
+        let profile = {};
+        try {
+            const existing = localStorage.getItem('mas_scholar_profile');
+            profile = existing ? JSON.parse(existing) : {};
+        } catch (e) {
+            console.warn("Failed to parse profile from localStorage, starting fresh");
+            localStorage.removeItem('mas_scholar_profile');
+        }
 
         const updated = {
             ...profile,

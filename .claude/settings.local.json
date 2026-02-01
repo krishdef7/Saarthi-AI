@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(while read f)",
+      "Bash(do if [ -f \"$f\" ])",
+      "Bash(then du -h \"$f\")",
+      "Bash(fi:*)",
+      "Bash(done)",
+      "Bash(git add:*)"
+    ]
+  }
+}
