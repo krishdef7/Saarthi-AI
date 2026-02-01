@@ -1,10 +1,18 @@
+# Core dependencies (required)
 fastapi>=0.100.0
 uvicorn[standard]
 pydantic>=2.0.0
 python-multipart
 websockets
+python-dotenv
+
+# HTTP client for web search
+httpx
 duckduckgo-search==4.1.1
 
-# Vector search (optional - graceful fallback if unavailable)
-qdrant-client>=1.7.0
-sentence-transformers>=2.2.0
+# NOTE: Vector search dependencies are HEAVY (~2GB with PyTorch)
+# Only install these if you have sufficient RAM (>1GB) and set ENABLE_VECTOR_SEARCH=true
+# For Render free tier (512MB), these are NOT installed - app uses BM25 search only
+#
+# To enable vector search locally or on paid hosting:
+# pip install qdrant-client sentence-transformers

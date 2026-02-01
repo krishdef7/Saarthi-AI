@@ -6,12 +6,14 @@ services:
     region: singapore
     plan: free
     rootDir: mas_scholar_app/backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
-        value: "3.10.0"
+        value: "3.11.0"
+      - key: ENABLE_VECTOR_SEARCH
+        value: "false"  # Disabled for free tier (512MB RAM limit)
       - key: QDRANT_HOST
         sync: false
       - key: QDRANT_API_KEY
@@ -22,5 +24,7 @@ services:
         value: "https://saarthi-ai.vercel.app"
     autoDeploy: true
 
-# Note: For Qdrant, use Qdrant Cloud free tier at https://cloud.qdrant.io
-# Then add your Qdrant host and API key in the environment variables above
+# Note: Vector search is disabled by default for free tier compatibility.
+# To enable hybrid search (BM25 + Vector), set ENABLE_VECTOR_SEARCH=true
+# and upgrade to a plan with at least 1GB RAM.
+# For Qdrant Cloud, use free tier at https://cloud.qdrant.io

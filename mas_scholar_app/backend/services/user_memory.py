@@ -3,8 +3,12 @@ User Interaction Memory Service
 ================================
 Stores and retrieves user interactions in Qdrant for personalized retrieval.
 Implements "Memory Beyond a Single Prompt" requirement.
+
+Note: This service requires vector search dependencies (qdrant-client, sentence-transformers).
+If ENABLE_VECTOR_SEARCH is false, the memory system is disabled gracefully.
 """
 
+import os
 import logging
 import hashlib
 from datetime import datetime
@@ -16,24 +20,33 @@ _memory_client = None
 _memory_embedder = None
 COLLECTION_NAME = "user_interactions"
 
+# Check environment variable for vector search
+ENABLE_VECTOR_SEARCH = os.getenv("ENABLE_VECTOR_SEARCH", "false").lower() == "true"
+
+
 async def initialize_memory_system():
     """Initialize the user interaction memory collection in Qdrant."""
     global _memory_client, _memory_embedder
-    
+
+    # Skip initialization if vector search is disabled (low-memory mode)
+    if not ENABLE_VECTOR_SEARCH:
+        logger.info("ℹ️ User memory system disabled (ENABLE_VECTOR_SEARCH=false)")
+        return False
+
     try:
         from qdrant_client import QdrantClient
         from qdrant_client.models import Distance, VectorParams
         from sentence_transformers import SentenceTransformer
-        
+
         logger.info("🧠 Initializing User Interaction Memory...")
-        
+
         _memory_client = QdrantClient(path="./qdrant_data")
         _memory_embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        
+
         # Check if collection exists
         collections = _memory_client.get_collections().collections
         exists = any(c.name == COLLECTION_NAME for c in collections)
-        
+
         if not exists:
             logger.info("📦 Creating user_interactions collection...")
             _memory_client.create_collection(
@@ -43,9 +56,9 @@ async def initialize_memory_system():
             logger.info("✅ User interaction memory initialized")
         else:
             logger.info("💾 Loaded existing user interaction memory")
-            
+
         return True
-        
+
     except Exception as e:
         logger.warning(f"⚠️ Memory system unavailable: {e}")
         return False

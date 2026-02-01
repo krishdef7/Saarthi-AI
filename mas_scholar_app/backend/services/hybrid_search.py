@@ -10,8 +10,13 @@ Pipeline:
 4. Reciprocal Rank Fusion (RRF) to merge results
 5. Eligibility scoring boost
 6. Safety penalties (scam detection)
+
+Environment Variables:
+- ENABLE_VECTOR_SEARCH: Set to "true" to enable vector search (requires more RAM)
+- Default is "false" for compatibility with low-memory deployments (512MB)
 """
 
+import os
 import re
 import math
 import time
@@ -23,12 +28,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sentence_transformers import SentenceTransformer
+# NOTE: sentence_transformers is imported lazily to avoid OOM on low-memory systems
+# See initialize_search_engine() for the lazy import
 
 from .eligibility import calculate_eligibility_match, compute_radar_scores
 from .safety import validate_scholarship, get_deadline_info
 
 logger = logging.getLogger("mas_scholar_api.search")
+
+# Environment variable to control vector search (default: disabled for free tier compatibility)
+ENABLE_VECTOR_SEARCH = os.getenv("ENABLE_VECTOR_SEARCH", "false").lower() == "true"
 
 # Global state with thread safety
 _search_lock = threading.RLock()
@@ -155,38 +164,46 @@ _bm25 = BM25Retriever()
 async def initialize_search_engine(scholarships: List[Dict]):
     """Initialize the search engine with scholarship data."""
     global _scholarships, _bm25, _search_mode, _embedder, _qdrant_client
-    
+
     _scholarships = scholarships
-    
-    # Build BM25 index
+
+    # Build BM25 index (always available - low memory footprint)
     logger.info("📚 Building BM25 index...")
     _bm25 = BM25Retriever()
-    
+
     for sch in scholarships:
         doc_id = sch.get("id", hashlib.md5(sch.get("name", "").encode()).hexdigest())
         text = f"{sch.get('name', '')} {sch.get('provider', '')} {sch.get('description', '')} {' '.join(sch.get('category', []))}"
         _bm25.add_document(doc_id, text)
-    
+
     logger.info(f"✅ BM25 index built with {_bm25.N} documents")
-    
-    # Try to initialize vector search
+
+    # Check if vector search is enabled via environment variable
+    if not ENABLE_VECTOR_SEARCH:
+        logger.info("ℹ️ Vector search disabled (ENABLE_VECTOR_SEARCH=false)")
+        logger.info("ℹ️ Running in BM25-only mode (optimized for low-memory deployments)")
+        _search_mode = "bm25"
+        return
+
+    # Try to initialize vector search (only if explicitly enabled)
     try:
+        # Lazy import to avoid loading heavy dependencies unless needed
         from sentence_transformers import SentenceTransformer
         from qdrant_client import QdrantClient
         from qdrant_client.models import Distance, VectorParams, PointStruct
-        
+
         logger.info("🔌 Initializing vector search...")
-        
+
         # Load embedding model
         _embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        
+
         # Initialize PERSISTENT Qdrant
         _qdrant_client = QdrantClient(path="./qdrant_data")
-        
+
         # Check if collection exists to avoid recreation
         collections = _qdrant_client.get_collections().collections
         exists = any(c.name == "scholarships" for c in collections)
-        
+
         if not exists:
             logger.info("📦 Creating new Qdrant collection...")
             _qdrant_client.recreate_collection(
@@ -216,7 +233,7 @@ async def initialize_search_engine(scholarships: List[Dict]):
         # Get actual count from collection (fixes undefined 'points' variable bug)
         collection_info = _qdrant_client.get_collection("scholarships")
         logger.info(f"✅ Vector search initialized with {collection_info.points_count} vectors")
-        
+
     except Exception as e:
         logger.warning(f"⚠️ Vector search unavailable, using BM25 only: {e}")
         _search_mode = "bm25"
