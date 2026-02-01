@@ -194,11 +194,29 @@ async def initialize_search_engine(scholarships: List[Dict]):
 
         logger.info("🔌 Initializing vector search...")
 
-        # Load embedding model
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        # Load embedding model (CPU-optimized)
+        _embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
 
-        # Initialize PERSISTENT Qdrant
-        _qdrant_client = QdrantClient(path="./qdrant_data")
+        # Initialize Qdrant - Cloud or Local
+        qdrant_host = os.getenv("QDRANT_HOST")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+        if qdrant_host and qdrant_api_key:
+            # Use Qdrant Cloud (recommended for production)
+            logger.info(f"☁️ Connecting to Qdrant Cloud: {qdrant_host}")
+            _qdrant_client = QdrantClient(
+                host=qdrant_host,
+                api_key=qdrant_api_key,
+                prefer_grpc=True
+            )
+        elif qdrant_host:
+            # Use remote Qdrant without auth (e.g., Docker)
+            logger.info(f"🔗 Connecting to Qdrant: {qdrant_host}")
+            _qdrant_client = QdrantClient(host=qdrant_host, port=6333)
+        else:
+            # Use local persistent Qdrant
+            logger.info("💾 Using local Qdrant storage")
+            _qdrant_client = QdrantClient(path="./qdrant_data")
 
         # Check if collection exists to avoid recreation
         collections = _qdrant_client.get_collections().collections

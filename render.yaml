@@ -1,19 +1,19 @@
 services:
-  # Backend API
+  # Backend API - HACKATHON MAX PERFORMANCE CONFIG
   - type: web
     name: saarthi-backend
     env: python
     region: singapore
-    plan: free
+    plan: starter  # $7/month - 512MB RAM + better CPU (upgrade to "standard" for 1GB if needed)
     rootDir: mas_scholar_app/backend
     buildCommand: pip install --no-cache-dir -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: ENABLE_VECTOR_SEARCH
-        value: "false"  # Disabled for free tier (512MB RAM limit)
+        value: "true"  # Full hybrid search enabled!
       - key: QDRANT_HOST
         sync: false
       - key: QDRANT_API_KEY
@@ -24,7 +24,19 @@ services:
         value: "https://saarthi-ai.vercel.app"
     autoDeploy: true
 
-# Note: Vector search is disabled by default for free tier compatibility.
-# To enable hybrid search (BM25 + Vector), set ENABLE_VECTOR_SEARCH=true
-# and upgrade to a plan with at least 1GB RAM.
-# For Qdrant Cloud, use free tier at https://cloud.qdrant.io
+# HACKATHON DEPLOYMENT OPTIONS:
+#
+# Option 1: Render Starter ($7/month) - Current config
+#   - 512MB RAM, better CPU than free
+#   - May still OOM with full model, try "standard" plan if so
+#
+# Option 2: Render Standard ($25/month)
+#   - 1GB RAM - guaranteed to work with full hybrid search
+#
+# Option 3: Railway.app (Free tier has 512MB but more lenient)
+#   - Often works better than Render free for ML workloads
+#
+# Option 4: Fly.io (256MB-1GB free tier)
+#   - Good alternative with generous limits
+#
+# For Qdrant Cloud (offload vector storage): https://cloud.qdrant.io

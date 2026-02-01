@@ -10,9 +10,7 @@ python-dotenv
 httpx
 duckduckgo-search==4.1.1
 
-# NOTE: Vector search dependencies are HEAVY (~2GB with PyTorch)
-# Only install these if you have sufficient RAM (>1GB) and set ENABLE_VECTOR_SEARCH=true
-# For Render free tier (512MB), these are NOT installed - app uses BM25 search only
-#
-# To enable vector search locally or on paid hosting:
-# pip install qdrant-client sentence-transformers
+# Vector search - ENABLE_VECTOR_SEARCH=true for full hybrid search
+# These are installed but only loaded at runtime if enabled
+qdrant-client>=1.7.0
+sentence-transformers>=2.2.0

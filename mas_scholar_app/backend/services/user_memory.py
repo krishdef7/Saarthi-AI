@@ -40,8 +40,18 @@ async def initialize_memory_system():
 
         logger.info("🧠 Initializing User Interaction Memory...")
 
-        _memory_client = QdrantClient(path="./qdrant_data")
-        _memory_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        # Initialize Qdrant - Cloud or Local
+        qdrant_host = os.getenv("QDRANT_HOST")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+        if qdrant_host and qdrant_api_key:
+            _memory_client = QdrantClient(host=qdrant_host, api_key=qdrant_api_key, prefer_grpc=True)
+        elif qdrant_host:
+            _memory_client = QdrantClient(host=qdrant_host, port=6333)
+        else:
+            _memory_client = QdrantClient(path="./qdrant_data")
+
+        _memory_embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
 
         # Check if collection exists
         collections = _memory_client.get_collections().collections
