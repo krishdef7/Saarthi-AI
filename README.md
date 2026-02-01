@@ -13,7 +13,7 @@
 
 **The first scholarship platform where you can watch AI agents think in real-time**
 
-[🚀 Live Demo](#) · [📄 Technical Report](Saarthi_AI_Final_Submission.pdf) · [🎥 Demo Video](#)
+[🚀 Live API](https://saarthi-ai-8vwu.onrender.com) · [📄 API Docs](https://saarthi-ai-8vwu.onrender.com/docs) · [💻 GitHub](https://github.com/krishdef7/Saarthi-AI)
 
 ---
 
@@ -95,7 +95,7 @@ graph TB
     end
 
     subgraph Storage["💾 Qdrant Vector DB"]
-        Scholarships[(185 Verified Scholarships)]
+        Scholarships[(200 Verified Scholarships)]
         Memory[(User Interactions)]
     end
 
@@ -123,7 +123,7 @@ graph TB
 | **Precision@5** | 88% | High relevance |
 | **Memory Impact** | +16% NDCG | Proven personalization |
 | **Eligibility** | 100% Deterministic | Zero hallucinations |
-| **Dataset** | 185 verified | From .gov.in sources |
+| **Dataset** | 200 verified | From .gov.in sources |
 
 ---
 
@@ -151,8 +151,8 @@ graph TB
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/yourusername/saarthi-ai.git
-cd saarthi-ai
+git clone https://github.com/krishdef7/Saarthi-AI.git
+cd Saarthi-AI
 ```
 
 ### 2. Start Qdrant
@@ -220,7 +220,7 @@ saarthi-ai/
 │   ├── backend/                       # FastAPI server
 │   │   ├── main.py                    # API entry point
 │   │   ├── requirements.txt           # Python dependencies
-│   │   ├── data/                      # 185 verified scholarships
+│   │   ├── data/                      # 200 verified scholarships
 │   │   ├── models/                    # Pydantic schemas
 │   │   ├── routers/                   # API endpoints
 │   │   └── services/                  # Core business logic

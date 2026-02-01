@@ -8,10 +8,9 @@
 
 ## Links
 
-- **GitHub Repository:** https://github.com/yourusername/saarthi-ai
-- **Live Demo:** [Add after deployment]
-- **Demo Video:** [Add after recording]
-- **Technical Report:** [Saarthi_AI_Final_Submission.pdf](Saarthi_AI_Final_Submission.pdf)
+- **GitHub Repository:** https://github.com/krishdef7/Saarthi-AI
+- **Live Backend API:** https://saarthi-ai-8vwu.onrender.com
+- **API Documentation:** https://saarthi-ai-8vwu.onrender.com/docs
 - **Documentation:** [README.md](README.md)
 
 ---
@@ -40,11 +39,11 @@ Five specialized AI agents collaborate to deliver personalized, accurate matches
 
 ### Technical Excellence
 
-- 59ms P95 latency (end-to-end)
-- Production-ready FastAPI + Next.js architecture
-- Qdrant vector database with 185 verified scholarships
-- Deterministic eligibility (rule-based, not LLM)
-- Memory-based personalization with safeguards
+- Production-deployed FastAPI backend on Render
+- 200 verified scholarships indexed with BM25 search
+- Deterministic eligibility scoring (100-point system, zero hallucinations)
+- Thread-safe caching and WebSocket connection management
+- Graceful degradation (vector search optional for low-memory environments)
 
 ### Impact
 
@@ -81,7 +80,7 @@ Students see exactly why they match scholarships, trust the system, and don't mi
 |-----------|--------|-------------------|
 | **Qdrant Expertise** | 30% | Dual collections, hybrid search, HNSW optimization |
 | **Memory/Personalization** | 25% | Vector memory, +16% NDCG, filter bubble prevention |
-| **Societal Impact** | 20% | Education equity, 185 verified scholarships, trust scoring |
+| **Societal Impact** | 20% | Education equity, 200 verified scholarships, trust scoring |
 | **Clarity/Reproducibility** | 15% | Full documentation, Docker setup, test suite |
 | **Documentation** | 10% | 22-page report, architecture docs, metrics |
 
