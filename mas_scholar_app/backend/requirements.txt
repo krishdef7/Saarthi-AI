@@ -3,7 +3,7 @@ uvicorn[standard]
 pydantic>=2.0.0
 python-multipart
 websockets
-uckduckgo-search==4.1.1
+duckduckgo-search==4.1.1
 
 # Vector search (optional - graceful fallback if unavailable)
 qdrant-client>=1.7.0
