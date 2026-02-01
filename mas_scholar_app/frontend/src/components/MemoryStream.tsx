@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Terminal, Cpu, Database, Award, CheckCircle, Search, AlertTriangle, ChevronRight, Activity } from "lucide-react";
+import { Terminal, Database, Award, CheckCircle, AlertTriangle, ChevronRight, Activity } from "lucide-react";
 
 // Strict stages mirroring Backend
 enum SearchStage {
@@ -24,7 +24,7 @@ interface WSEvent {
     meta: Record<string, unknown>;
 }
 
-export default function MemoryStream() {
+function MemoryStreamContent() {
     const searchParams = useSearchParams();
     const searchId = searchParams.get("search_id");
 
@@ -175,5 +175,20 @@ export default function MemoryStream() {
                 </div>
             )}
         </aside>
+    );
+}
+
+// Export with Suspense boundary (required for useSearchParams in Next.js 14+)
+export default function MemoryStream() {
+    return (
+        <Suspense fallback={
+            <aside className="hidden lg:flex flex-col w-80 border-l border-slate-800 bg-slate-950 h-screen sticky top-0">
+                <div className="h-16 border-b border-slate-800 flex items-center px-4">
+                    <span className="text-xs text-slate-500">Loading...</span>
+                </div>
+            </aside>
+        }>
+            <MemoryStreamContent />
+        </Suspense>
     );
 }

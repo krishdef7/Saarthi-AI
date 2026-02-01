@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Filter, ChevronRight, ShieldCheck, Clock, CheckCircle2, CircleDashed, AlertTriangle, Brain, Zap } from "lucide-react";
+import { Search, ChevronRight, ShieldCheck, Clock, CheckCircle2, CircleDashed, AlertTriangle, Brain, Zap, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { v4 as uuidv4 } from 'uuid';
 import { MOCK_SCHOLARSHIPS } from "@/lib/mockData";
@@ -51,7 +51,7 @@ function getSavedProfile() {
     }
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const initialQuery = searchParams.get("q") || "";
@@ -488,5 +488,26 @@ export default function SearchPage() {
                 )}
             </AnimatePresence>
         </div>
+    );
+}
+
+// Loading fallback for Suspense
+function SearchLoading() {
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-950">
+            <div className="flex flex-col items-center gap-4">
+                <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+                <p className="text-slate-400">Loading search...</p>
+            </div>
+        </div>
+    );
+}
+
+// Export with Suspense boundary (required for useSearchParams in Next.js 14+)
+export default function SearchPage() {
+    return (
+        <Suspense fallback={<SearchLoading />}>
+            <SearchPageContent />
+        </Suspense>
     );
 }
